@@ -10,6 +10,19 @@
   "website": "https://github.com/edgurgel/poxa",
   "repository": "https://github.com/edgurgel/poxa",
   "env": {
-    "BUILDPACK_URL": "https://github.com/HashNuke/heroku-buildpack-elixir.git"
-  }
+    "POXA_APP_KEY": {
+      "generator": "secret"
+    },
+    "POXA_SECRET": {
+      "generator": "secret"
+    },
+    "POXA_APP_ID": {
+      "description": "Your Pusher App's ID"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/HashNuke/heroku-buildpack-elixir"
+    }
+  ]
 }
