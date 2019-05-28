@@ -1,8 +1,8 @@
 defmodule Poxa.WebHook.HandlerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias Poxa.Channel
   alias Poxa.WebHook.EventTable
-  import :meck
+  import Mimic
   import Poxa.WebHook.Handler
 
   @table_name :web_hook_events
@@ -12,9 +12,6 @@ defmodule Poxa.WebHook.HandlerTest do
     :application.set_env(:poxa, :app_key, "app_key")
     :application.set_env(:poxa, :web_hook, "web_hook_url")
 
-    new Channel
-
-    on_exit fn -> unload end
     :ok
   end
 
@@ -42,13 +39,13 @@ defmodule Poxa.WebHook.HandlerTest do
   end
 
   test "subscribed is not saved" do
-    expect Channel, :subscription_count, fn _ -> 1 end
+    expect Channel, :subscription_count, fn "my_channel" -> 1 end
     assert {:ok, []} == handle_event(%{event: :subscribed, channel: "my_channel"}, [])
     assert EventTable.all == []
   end
 
   test "unsubscribed is not saved" do
-    expect Channel, :occupied?, fn _ -> false end
+    expect Channel, :occupied?, fn "my_channel" -> false end
     assert {:ok, []} == handle_event(%{event: :unsubscribed, channel: "my_channel"}, [])
     assert EventTable.all == []
   end
@@ -74,6 +71,16 @@ defmodule Poxa.WebHook.HandlerTest do
     expected = [
       %{channel: "channel_1", name: "client_event", event: "my_event", data: "data", socket_id: "socket_id"},
       %{channel: "channel_2", name: "client_event", event: "my_event", data: "data", socket_id: "socket_id"},
+    ] |> Enum.into(MapSet.new)
+    assert MapSet.equal?(expected, Enum.into(EventTable.all, MapSet.new))
+    assert {_, [_, _]} = EventTable.ready
+  end
+
+  test "client_event_message with user_id is saved" do
+    assert {:ok, []} == handle_event(%{event: :client_event_message, socket_id: "socket_id", channels: ~w(channel_1 channel_2), name: "my_event", data: "data", user_id: "123"}, [])
+    expected = [
+      %{channel: "channel_1", name: "client_event", event: "my_event", data: "data", socket_id: "socket_id", user_id: "123"},
+      %{channel: "channel_2", name: "client_event", event: "my_event", data: "data", socket_id: "socket_id", user_id: "123"},
     ] |> Enum.into(MapSet.new)
     assert MapSet.equal?(expected, Enum.into(EventTable.all, MapSet.new))
     assert {_, [_, _]} = EventTable.ready

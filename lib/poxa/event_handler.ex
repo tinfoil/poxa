@@ -16,7 +16,7 @@ defmodule Poxa.EventHandler do
 
   def allowed_methods(req, state), do: {["POST"], req, state}
 
-  @invalid_event_json JSX.encode!(%{error: "Event must have channel(s), name, and data"})
+  @invalid_event_json Poison.encode!(%{error: "Event must have channel(s), name, and data"})
 
   @doc """
   If the body is not JSON or not a valid PusherEvent this function will
@@ -24,7 +24,7 @@ defmodule Poxa.EventHandler do
   """
   def malformed_request(req, state) do
     {:ok, body, req} = :cowboy_req.body(req)
-    case JSX.decode(body) do
+    case Poison.decode(body) do
       {:ok, data} ->
         case PusherEvent.build(data) do
           {:ok, event} -> {false, req, %{body: body, event: event}}
@@ -38,7 +38,7 @@ defmodule Poxa.EventHandler do
     end
   end
 
-  @authentication_error_json JSX.encode!(%{error: "Authentication error"})
+  @authentication_error_json Poison.encode!(%{error: "Authentication error"})
 
   @doc """
   More info http://pusher.com/docs/rest_api#authentication
@@ -47,26 +47,27 @@ defmodule Poxa.EventHandler do
     {qs_vals, req} = :cowboy_req.qs_vals(req)
     {method, req} = :cowboy_req.method(req)
     {path, req} = :cowboy_req.path(req)
-    authorized = Authentication.check(method, path, body, qs_vals)
-    req = if authorized do
-            req
-          else
-            :cowboy_req.set_resp_body(@authentication_error_json, req)
-          end
-    {authorized, req, state}
+    if Authentication.check(method, path, body, qs_vals) do
+      {true, req, state}
+    else
+      req = :cowboy_req.set_resp_body(@authentication_error_json, req)
+      {{false, "Authentication error"}, req, state}
+    end
   end
 
-  @invalid_data_size_json JSX.encode!(%{error: "Data key must be smaller than 10KB"})
+
+  @invalid_data_size_json Poison.encode!(%{error: "Data key must be smaller than 10KB"})
 
   @doc """
-  The event data can't be greater than 10KB
+  The event data can't be greater than payload_limit which defaults to 10KB
   """
   def valid_entity_length(req, %{event: event} = state) do
-    valid = byte_size(event.data) <= 10_000
+    {:ok, payload_limit} = Application.fetch_env(:poxa, :payload_limit)
+    valid = byte_size(event.data) <= payload_limit
     req = if valid do
             req
           else
-            :cowboy_req.set_resp_body(@invalid_data_size_json, req)
+            :cowboy_req.set_resp_body(invalid_data_size_json(payload_limit), req)
           end
     {valid, req, state}
   end
@@ -87,5 +88,10 @@ defmodule Poxa.EventHandler do
     Event.notify(:api_message, %{channels: event.channels, name: event.name, socket_id: nil})
     req = :cowboy_req.set_resp_body("{}", req)
     {true, req, nil}
+  end
+
+  @doc false
+  defp invalid_data_size_json(payload_limit) do
+    JSX.encode!(%{error: "Data key must be smaller than #{payload_limit}B"})
   end
 end

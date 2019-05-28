@@ -1,8 +1,6 @@
 [![Build Status](https://travis-ci.org/edgurgel/poxa.svg?branch=master)](https://travis-ci.org/edgurgel/poxa)
-[![Deps Status](https://beta.hexfaktor.org/badge/all/github/edgurgel/poxa.svg)](https://beta.hexfaktor.org/github/edgurgel/poxa)
 [![Inline docs](http://inch-ci.org/github/edgurgel/poxa.svg?branch=master)](http://inch-ci.org/github/edgurgel/poxa)
 [![Release](http://img.shields.io/github/release/edgurgel/poxa.svg)](https://github.com/edgurgel/poxa/releases/latest)
-[![Deploy](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
 
 # Poxa
 
@@ -57,7 +55,7 @@ How do I speak 'poxa'?
 
 Poxa is a standalone elixir server implementation of the Pusher protocol.
 
-You need [Elixir](http://elixir-lang.org) 1.2.6 at least and Erlang 18.0
+You need [Elixir](http://elixir-lang.org) 1.5 at least and Erlang 20.0
 
 Clone this repository
 
@@ -122,6 +120,14 @@ config :poxa,
         keyfile: "priv/ssl/server.key"]
 ```
 
+Optionally you can specify a payload limit. The default value is 10kb. To change it pass
+```
+PAYLOAD_LIMIT=20000
+```
+where 20000 is number of bytes.
+
+You can also specify this value via `payload_limit` in your config file (e.g. my_config.exs) as you would for other variables.
+
 ## Release
 
 This is the preferred way to deploy a Poxa server.
@@ -137,19 +143,19 @@ MIX_ENV=prod mix do deps.get, compile, release
 Then you can run it using:
 
 ```console
-$ ./rel/poxa/bin/poxa
+$ _build/prod/rel/poxa/bin/poxa
 Usage: poxa {start|start_boot <file>|foreground|stop|restart|reboot|ping|rpc <m> <f> [<a>]|console|console_clean|console_boot <file>|attach|remote_console|upgrade}
 ```
 
 To start as daemon you just need to:
 
 ```console
-./rel/poxa/bin/poxa start
+$ _build/prod/rel/poxa/bin/poxa start
 ```
 
 ### Release configuration
 
-Starting from Poxa 0.3.1 the configuration can be done on `./releases/0.3.1/poxa.conf` considering 0.3.1 is the release version.
+Starting from Poxa 0.7.0 the configuration can be done on `_build/prod/rel/poxa/releases/0.7.0/poxa.conf` considering 0.7.0 is the release version.
 
 You should see a file like this:
 
@@ -169,6 +175,30 @@ poxa.app_id = "app_id"
 
 You can change anything on this file and just start the release and this configuration will be used.
 
+#### Environment variables
+
+The .conf file is not the only way to configure a release. The following environment variables are supported:
+
+* `PORT`
+* `POXA_APP_KEY`
+* `POXA_SECRET`
+* `POXA_APP_ID`
+* `POXA_REGISTRY_ADAPTER`
+* `WEB_HOOK`
+* `POXA_SSL`
+* `SSL_PORT`
+* `SSL_CACERTFILE`
+* `SSL_CERTFILE`
+* `SSL_KEYFILE`
+
+Even if the file is not used at all, an empty file must exist or you will get this error:
+
+```
+missing .conf, expected it at /Users/eduardo/workspace/poxa/_build/prod/rel/poxa/releases/0.7.0/poxa.conf
+```
+
+It is very important that the .conf file does not have the same configuration. For example if both `PORT` and `poxa.port` (inside the .conf file) are defined, then the file will have precedence.
+
 ## Using Docker
 
 Docker images are automatically built by [Docker Hub](https://hub.docker.com/r/edgurgel/poxa-automated/builds/). They are available at Docker Hub: https://hub.docker.com/r/edgurgel/poxa-automated/tags/
@@ -178,7 +208,7 @@ One can generate it just running `docker build -t local/poxa .`.
 The docker run command should look like this:
 
 ```
-docker run --rm -p 8080:8080 -v $PWD/mypoxa.conf:/app/poxa/running-config/poxa.conf local/poxa
+docker run --rm --name poxa -p 8080:8080 -v /home/mydir/poxa.conf:/app/poxa/releases/0.8.0/poxa.conf edgurgel/poxa-automated:latest
 ```
 
 ## Your application
@@ -238,7 +268,7 @@ Compile:
 mix compile
 ```
 
-The test suite used is the ExUnit and [meck](http://github.com/eproxus/meck) to mock stuff.
+The test suite used is the ExUnit and [Mimic](http://github.com/edgurgel/mimic) to mock stuff.
 
 To run tests:
 
@@ -259,4 +289,5 @@ Thanks to [@bastos](https://github.com/bastos) for the project name :heart:!
 ## Who is using it?
 
 * [Waffle Takeout](https://takeout.waffle.io/)
+* [Tinfoil Security](https://tinfoilsecurity.com/)
 * Add your project/service here! Send a PR! :tada:

@@ -6,7 +6,7 @@ defmodule Poxa.PusherEvent do
   """
 
   alias Poxa.PresenceSubscription
-  import JSX, only: [encode!: 1]
+  import Poison, only: [encode!: 1]
 
   @doc """
   Return a JSON for an established connection using the `socket_id` parameter to
@@ -63,7 +63,7 @@ defmodule Poxa.PusherEvent do
   end
 
   def subscription_succeeded(%PresenceSubscription{channel: channel, channel_data: channel_data}) do
-    {ids, _Hash} = :lists.unzip(channel_data)
+    ids = Map.keys(channel_data)
     count = Enum.count(ids)
     data = %{presence: %{ids: ids, hash: channel_data, count: count}} |> encode!
     %{event: "pusher_internal:subscription_succeeded",
@@ -140,8 +140,8 @@ defmodule Poxa.PusherEvent do
       data: data} |> encode!
   end
 
-  defstruct [:channels, :name, :data, :socket_id]
-  @type t :: %Poxa.PusherEvent{channels: list, name: binary,
+  defstruct [:channels, :name, :data, :socket_id, :user_id]
+  @type t :: %Poxa.PusherEvent{channels: list, name: binary, user_id: nil | binary,
                                data: binary | map, socket_id: nil | binary}
 
   @doc """
@@ -161,14 +161,16 @@ defmodule Poxa.PusherEvent do
   """
   @spec build_client_event(map, binary) :: {:ok, Poxa.PusherEvent.t} | {:error, atom}
   def build_client_event(%{"event" => name, "channel" => channel, "data" => data}, socket_id) do
-    build_event([channel], data, name, socket_id)
+    user_id = Poxa.PresenceChannel.my_user_id(channel)
+    build_event([channel], data, name, socket_id, user_id)
   end
   def build_client_event(%{"name" => name, "channel" => channel, "data" => data}, socket_id) do
-    build_event([channel], data, name, socket_id)
+    user_id = Poxa.PresenceChannel.my_user_id(channel)
+    build_event([channel], data, name, socket_id, user_id)
   end
 
-  defp build_event(channels, data, name, socket_id) do
-    event = %Poxa.PusherEvent{channels: channels, data: data, name: name, socket_id: socket_id}
+  defp build_event(channels, data, name, socket_id, user_id \\ nil) do
+    event = %Poxa.PusherEvent{channels: channels, data: data, name: name, socket_id: socket_id, user_id: user_id}
     if valid?(event), do: {:ok, event},
     else: {:error, :invalid_event}
   end
@@ -192,7 +194,7 @@ defmodule Poxa.PusherEvent do
 
   defp publish_event_to_channel(event, channel) do
     message = build_message(event, channel) |> encode!
-    Poxa.registry.send!(message, channel, self, event.socket_id)
+    Poxa.registry.send!(message, channel, self(), event.socket_id)
   end
 
   defp build_message(event, channel) do

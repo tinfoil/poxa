@@ -1,61 +1,57 @@
 defmodule Poxa.PusherEventTest do
-  use ExUnit.Case
-  import :meck
+  use ExUnit.Case, async: true
+  import Mimic
   import Poxa.PusherEvent
   alias Poxa.PusherEvent
 
-  setup do
-    new Poxa.registry
-    on_exit fn -> unload end
-    :ok
-  end
+  setup :verify_on_exit!
 
   doctest Poxa.PusherEvent
 
   test "connection established output" do
-    json ="{\"data\":\"{\\\"activity_timeout\\\":120,\\\"socket_id\\\":\\\"SocketId\\\"}\",\"event\":\"pusher:connection_established\"}"
+    json = "{\"event\":\"pusher:connection_established\",\"data\":\"{\\\"socket_id\\\":\\\"SocketId\\\",\\\"activity_timeout\\\":120}\"}"
     assert connection_established("SocketId") == json
   end
 
   test "subscription established output" do
-    json = "{\"channel\":\"channel\",\"data\":{},\"event\":\"pusher_internal:subscription_succeeded\"}"
+    json = "{\"event\":\"pusher_internal:subscription_succeeded\",\"data\":{},\"channel\":\"channel\"}"
     assert subscription_succeeded("channel") == json
   end
 
   test "subscription error output" do
-    json = "{\"data\":{},\"event\":\"pusher:subscription_error\"}"
-    assert subscription_error == json
+    json = "{\"event\":\"pusher:subscription_error\",\"data\":{}}"
+    assert subscription_error() == json
   end
 
   test "pusher error output" do
-    json = "{\"data\":{\"code\":null,\"message\":\"An error\"},\"event\":\"pusher:error\"}"
+    json = "{\"event\":\"pusher:error\",\"data\":{\"message\":\"An error\",\"code\":null}}"
     assert pusher_error("An error") == json
   end
 
   test "pusher error with code output" do
-    json = "{\"data\":{\"code\":123,\"message\":\"An error\"},\"event\":\"pusher:error\"}"
+    json = "{\"event\":\"pusher:error\",\"data\":{\"message\":\"An error\",\"code\":123}}"
     assert pusher_error("An error", 123) == json
   end
 
   test "pong output" do
-    json ="{\"data\":{},\"event\":\"pusher:pong\"}"
-    assert pong == json
+    json = "{\"event\":\"pusher:pong\",\"data\":{}}"
+    assert pong() == json
   end
 
   test "presence member added output" do
-    json ="{\"channel\":\"channel\",\"data\":\"{\\\"user_id\\\":\\\"userid\\\",\\\"user_info\\\":\\\"userinfo\\\"}\",\"event\":\"pusher_internal:member_added\"}"
+    json = "{\"event\":\"pusher_internal:member_added\",\"data\":\"{\\\"user_info\\\":\\\"userinfo\\\",\\\"user_id\\\":\\\"userid\\\"}\",\"channel\":\"channel\"}"
     assert presence_member_added("channel", "userid", "userinfo") == json
   end
 
   test "presence member removed output" do
-    json ="{\"channel\":\"channel\",\"data\":\"{\\\"user_id\\\":\\\"userid\\\"}\",\"event\":\"pusher_internal:member_removed\"}"
+    json = "{\"event\":\"pusher_internal:member_removed\",\"data\":\"{\\\"user_id\\\":\\\"userid\\\"}\",\"channel\":\"channel\"}"
     assert presence_member_removed("channel", "userid") == json
   end
 
   test "presence subscription succeeded" do
-    json = "{\"channel\":\"presence-channel\",\"data\":\"{\\\"presence\\\":{\\\"count\\\":1,\\\"hash\\\":{\\\"userid\\\":\\\"userinfo\\\"},\\\"ids\\\":[\\\"userid\\\"]}}\",\"event\":\"pusher_internal:subscription_succeeded\"}"
+    json = "{\"event\":\"pusher_internal:subscription_succeeded\",\"data\":\"{\\\"presence\\\":{\\\"ids\\\":[\\\"userid\\\"],\\\"hash\\\":{\\\"userid\\\":{\\\"user\\\":\\\"info\\\"}},\\\"count\\\":1}}\",\"channel\":\"presence-channel\"}"
     subscription = %Poxa.PresenceSubscription{channel: "presence-channel",
-                                              channel_data: [{"userid", "userinfo"}]}
+                                              channel_data: %{"userid" => %{ "user" => "info"}}}
     assert subscription_succeeded(subscription) == json
   end
 
@@ -101,13 +97,15 @@ defmodule Poxa.PusherEventTest do
     event = %{"channel" => "channel_name",
               "data" => "event_data",
               "name" => "event_etc"}
-    assert build_client_event(event, "123.456") == {:ok, %PusherEvent{name: "event_etc", data: "event_data", channels: ["channel_name"], socket_id: "123.456"}}
+    stub(Poxa.PresenceChannel, :my_user_id, fn _ -> "user-789" end)
+    assert build_client_event(event, "123.456") == {:ok, %PusherEvent{name: "event_etc", data: "event_data", channels: ["channel_name"], socket_id: "123.456", user_id: "user-789"}}
   end
 
   test "build_client_event with invalid excluding socket_id" do
     event = %{"channel" => "channel_name",
               "data" => "event_data",
               "name" => "event_etc"}
+    stub(Poxa.PresenceChannel, :my_user_id, fn _ -> "user-789" end)
     assert build_client_event(event, "123:456") == {:error, :invalid_event}
   end
 
@@ -115,27 +113,27 @@ defmodule Poxa.PusherEventTest do
     event = %{"channel" => "channel:name",
               "data" => "event_data",
               "name" => "event_etc"}
+
+    stub(Poxa.PresenceChannel, :my_user_id, fn _ -> "user-789" end)
     assert build_client_event(event, "123.456") == {:error, :invalid_event}
   end
 
   test "sending message to a channel" do
-    expect(Poxa.registry, :send!, [{[:msg, "channel123", self, nil], :ok}])
+    pid = self()
+    expect(Poxa.registry, :send!, fn :msg, "channel123", ^pid, nil -> :ok end)
     expected = %{channel: "channel123", data: "data", event: "event"}
-    expect(JSX, :encode!, [{[expected], :msg}])
+    expect(Poison, :encode!, fn ^expected -> :msg end)
     event = %PusherEvent{channels: ["channel123"], data: "data", name: "event"}
 
     assert publish(event) == :ok
-
-    assert validate [Poxa.registry, JSX]
   end
 
   test "sending message to channels excluding a socket id" do
+    pid = self()
     expected = %{channel: "channel123", data: %{}, event: "event"}
-    expect(JSX, :encode!, [{[expected], :msg}])
-    expect(Poxa.registry, :send!, [{[:msg, "channel123", self, "SocketId"], :ok}])
+    expect(Poison, :encode!, fn ^expected -> :msg end)
+    expect(Poxa.registry, :send!, fn :msg, "channel123", ^pid, "SocketId" -> :ok end)
 
     assert publish(%PusherEvent{data: %{}, channels: ["channel123"], name: "event", socket_id: "SocketId"}) == :ok
-
-    assert validate [Poxa.registry, JSX]
   end
 end

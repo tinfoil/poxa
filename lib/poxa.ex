@@ -21,9 +21,9 @@ defmodule Poxa do
              { '/apps/:app_id/channels/:channel_name/users', Poxa.UsersHandler, [] },
              { '/app/:app_key', Poxa.WebsocketHandler, [] } ] }
     ])
-    case load_config do
+    case load_config() do
       {:ok, config} ->
-        Logger.info "Starting Poxa using app_key: #{config.app_key}, app_id: #{config.app_id}, app_secret: #{config.app_secret} on port #{config.port}"
+        Logger.info "Starting Poxa, app_id: #{config.app_id} on port #{config.port}"
         {:ok, _} = :cowboy.start_http(:poxa, 100,
                                       [port: config.port],
                                       [env: [dispatch: dispatch]])
@@ -64,6 +64,7 @@ defmodule Poxa do
         if enabled_ssl?(ssl_config) do
           ssl_port = Keyword.get(ssl_config, :port)
           Logger.info "Starting Poxa using SSL on port #{ssl_port}"
+          ssl_config = Keyword.drop(ssl_config, [:enabled])
           {:ok, _} = :cowboy.start_https(:https, 100, ssl_config, [env: [dispatch: dispatch] ])
         else
           Logger.info "SSL not configured/started"

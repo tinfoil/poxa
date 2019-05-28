@@ -1,29 +1,43 @@
 defmodule Poxa.PresenceChannelTest do
-  use ExUnit.Case
-  import :meck
+  use ExUnit.Case, async: true
+  import Mimic
   import Poxa.PresenceChannel
 
+  setup :verify_on_exit!
+
   setup do
-    new Poxa.registry
-    on_exit fn -> unload end
+    stub(Poxa.registry)
     :ok
   end
 
   test "return unique user ids currently subscribed" do
-    expect(Poxa.registry, :unique_subscriptions, ["presence-channel"], [{ :user_id, :user_info },
-                                                                        { :user_id2, :user_info2 }])
+    expect(Poxa.registry, :unique_subscriptions, fn "presence-channel" ->
+      [{:user_id, :user_info},{:user_id2, :user_info2}]
+    end)
 
     assert users("presence-channel") == [:user_id, :user_id2]
-
-    assert validate Poxa.registry
   end
 
   test "return number of unique subscribed users" do
-    expect(Poxa.registry, :unique_subscriptions, ["presence-channel"], [{ :user_id, :user_info },
-                                                                        { :user_id2, :user_info2 }])
+    expect(Poxa.registry, :unique_subscriptions, fn "presence-channel" ->
+      [{:user_id, :user_info},{:user_id2, :user_info2}]
+    end)
 
     assert user_count("presence-channel") == 2
+  end
 
-    assert validate Poxa.registry
+  test "return user_id if available" do
+    expect(Poxa.registry, :fetch, fn "presence-channel" ->
+      {:user_id, :user_info}
+    end)
+
+    assert my_user_id("presence-channel") == :user_id
+  end
+
+
+  test "return nil if user_id is not available" do
+    expect(Poxa.registry, :fetch, fn "presence-channel" -> nil end)
+
+    assert my_user_id("presence-channel") == nil
   end
 end
