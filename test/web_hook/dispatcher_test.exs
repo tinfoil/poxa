@@ -1,7 +1,7 @@
 defmodule Poxa.WebHook.DispatcherTest do
   use ExUnit.Case, async: true
   alias Poxa.WebHook.EventTable
-  import Mimic
+  use Mimic
   import Poxa.WebHook.Dispatcher
 
   @table_name :web_hook_events
@@ -15,22 +15,21 @@ defmodule Poxa.WebHook.DispatcherTest do
   end
 
   setup do
-    stub HTTPoison, :post, fn url, body, headers ->
-      args_map = %{url: url, body: Poison.decode!(body), headers: headers}
+    stub(HTTPoison, :post, fn url, body, headers ->
+      args_map = %{url: url, body: Jason.decode!(body), headers: headers}
       send(self(), args_map)
       {:ok, args_map}
-    end
+    end)
 
     :ok
   end
 
-  setup :verify_on_exit!
-
   setup do
     case :ets.info(@table_name) do
-      :undefined -> EventTable.init
+      :undefined -> EventTable.init()
       _ -> :ets.delete_all_objects(@table_name)
     end
+
     :ok
   end
 
@@ -38,16 +37,17 @@ defmodule Poxa.WebHook.DispatcherTest do
     EventTable.insert(~w(event_1 event_2))
     EventTable.insert("delayed_event", 10000)
     assert handle_info(:timeout, nil) == {:noreply, nil, 1500}
-    assert ~w(delayed_event) == EventTable.all
+    assert ~w(delayed_event) == EventTable.all()
+
     assert_received %{
       url: "web_hook_url",
       body: %{
         "time_ms" => _,
-        "events"  => ~w(event_1 event_2)
+        "events" => ~w(event_1 event_2)
       },
       headers: %{
-        "Content-Type"       => "application/json",
-        "X-Pusher-Key"       => "app_key",
+        "Content-Type" => "application/json",
+        "X-Pusher-Key" => "app_key",
         "X-Pusher-Signature" => _
       }
     }
